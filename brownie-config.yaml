@@ -1,0 +1,15 @@
+dependencies:
+  - OpenZeppelin/openzeppelin-contracts@4.4.0
+compiler:
+  solc:
+    remappings:
+      - '@openzeppelin=OpenZeppelin/openzeppelin-contracts@4.4.0'
+# automatically fetch contract sources from Etherscan
+autofetch_sources: True
+dotenv: .env
+# set a custom mnemonic for the development network
+networks:
+  default: development
+wallets:
+  from_key: ${PRIVATE_KEY}
+  
