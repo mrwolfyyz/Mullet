@@ -11,11 +11,9 @@ const hostProfile = {
 };
 
 const downloadFile = async (fileUrl, downloadFolder) => {
-  // Get the file name
   const fileName = path.basename(fileUrl).split('?')[0];
-
-  // The path of the downloaded file on our machine
   const localFilePath = path.resolve(__dirname, downloadFolder, fileName);
+  
   try {
     const response = await axios({
       method: 'GET',
@@ -33,7 +31,6 @@ const downloadFile = async (fileUrl, downloadFolder) => {
   }
 return fileName;
 }; 
-
 
 const pinFileToIPFS = async (baseFileName) => {
     const formData = new FormData();
@@ -95,9 +92,9 @@ const pinJsonToIPFS = async (hostProfile) => {
   };
   
   try {
-  const res = await axios(config);
-  console.log(res.data);
-  cidJson= 'ipfs://'+res.data.IpfsHash;
+    const res = await axios(config);
+    console.log(res.data);
+    cidJson= 'ipfs://'+res.data.IpfsHash;
   } catch (error) {
   console.log(error);
   }
@@ -117,8 +114,6 @@ exports.handler = async (event, context) => {
     const page = await context.newPage();
     await page.goto(hostProfile.external_url);
 
-    
-   
     const extractName = async () => {
       const nameString = await page.getByText("Hi, I’m").textContent();
       return nameString.slice(8);
@@ -129,7 +124,7 @@ exports.handler = async (event, context) => {
     hostProfile.image = await extractImage()
 
     const tab = await page.locator('#tab--user-profile-review-tabs--0,#review-section-title')
-    // Detect if multiple pages
+    
     const extractNumPages = async () => { 
      const strReviews = (await tab.count()> 1) ? await tab.nth(1).textContent() : await tab.textContent()
      const pagesTotal = Math.ceil (parseInt(strReviews.match(/(\d+)/))/10);
@@ -137,7 +132,6 @@ exports.handler = async (event, context) => {
     }
     const pages = await extractNumPages()
     
-    //Expand all pages
     const expandAllPages = async () => {
       const morePagesButtons = await page.locator('button._1dj2p4gk') 
       for (let step=0; step < (pages -1); step++){
@@ -155,7 +149,6 @@ exports.handler = async (event, context) => {
     const reviewList = []
     hostProfile.Attributes = [];
    
-    // Get All reviews
     for (let step = 0; step < (await hostReviews.count()); step++) {
       if (await expandReviewButton.nth(step).isVisible()) {
         await expandReviewButton.nth(step).click()
