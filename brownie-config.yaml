@@ -1,9 +1,9 @@
 dependencies:
-  - OpenZeppelin/openzeppelin-contracts@4.4.0
+  - OpenZeppelin/openzeppelin-contracts@4.8.0
 compiler:
   solc:
     remappings:
-      - '@openzeppelin=OpenZeppelin/openzeppelin-contracts@4.4.0'
+      - '@openzeppelin=OpenZeppelin/openzeppelin-contracts@4.8.0'
 # automatically fetch contract sources from Etherscan
 autofetch_sources: True
 dotenv: .env
