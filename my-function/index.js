@@ -14,7 +14,7 @@ const hostProfile = {
   Attributes: [],
 };
 
-const downloadFile = async (fileUrl, downloadFolder) => {
+const downloadImage = async (fileUrl, downloadFolder) => {
   const fileName = path.basename(fileUrl).split("?")[0];
   const localFilePath = path.resolve(__dirname, downloadFolder, fileName);
 
@@ -24,18 +24,22 @@ const downloadFile = async (fileUrl, downloadFolder) => {
       url: fileUrl,
       responseType: "stream",
     });
-
-    const w = response.data.pipe(fs.createWriteStream(localFilePath));
-    w.on("finish", () => {
-      console.log("Successfully downloaded file! " + fileName);
+    await new Promise((resolve, reject) => {
+      response.data
+        .pipe(fs.createWriteStream(localFilePath))
+        .on("finish", resolve)
+        .on("error", reject);
     });
+    console.log("Successfully downloaded file! " + fileName);
   } catch (err) {
-    throw new Error(err);
+    console.error(`Error downloading file: ${err.message}`);
+    console.error(err.stack);
+    throw new Error(`Error downloading file: ${err.message}`);
   }
   return fileName;
 };
 
-const pinFileToIPFS = async (baseFileName) => {
+const pinImageToIPFS = async (baseFileName) => {
   const formData = new FormData();
   const src = "/tmp/" + baseFileName;
   let imageUrl = "";
@@ -69,14 +73,16 @@ const pinFileToIPFS = async (baseFileName) => {
 
     imageUrl = res.data.IpfsHash;
   } catch (error) {
-    console.log(error);
+    console.error(`Error pinning ${baseFileName}: ${err.message}`);
+    console.error(err.stack);
+    throw new Error(`Error pinning ${baseFileName}: ${err.message}`);
   }
   return `ipfs://${imageUrl}`;
 };
 
 const pinJsonToIPFS = async (hostProfile) => {
-  var cidJson = "";
-  var data = JSON.stringify({
+  let cidJson = "";
+  let profileData = JSON.stringify({
     pinataOptions: {
       cidVersion: 1,
     },
@@ -97,7 +103,7 @@ const pinJsonToIPFS = async (hostProfile) => {
       "Content-Type": "application/json",
       Authorization: JWT,
     },
-    data: data,
+    data: profileData,
   };
 
   try {
@@ -105,7 +111,9 @@ const pinJsonToIPFS = async (hostProfile) => {
     console.log(res.data);
     cidJson = "ipfs://" + res.data.IpfsHash;
   } catch (error) {
-    console.log(error);
+    console.error(`Error pinning Json: ${data}: ${err.message}`);
+    console.error(err.stack);
+    throw new Error(`Error pinning Json: ${data}: ${err.message}`);
   }
 
   return cidJson;
@@ -181,12 +189,14 @@ exports.handler = async (event, context) => {
       }
     };
     await getAllReviews();
-    const baseFileName = await downloadFile(hostProfile.image, "/tmp");
-    hostProfile.image = await pinFileToIPFS(baseFileName);
+    const baseFileName = await downloadImage(hostProfile.image, "/tmp");
+    hostProfile.image = await pinImageToIPFS(baseFileName);
     cidURL = await pinJsonToIPFS(hostProfile);
     console.log(cidURL);
   } catch (error) {
-    throw error;
+    console.error(`Error: ${err.message}`);
+    console.error(err.stack);
+    throw new Error(`Error: ${err.message}`);
   } finally {
     if (browser) {
       await browser.close();
