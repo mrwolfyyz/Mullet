@@ -30,7 +30,7 @@ const downloadImage = async (fileUrl, downloadFolder) => {
         .on("finish", resolve)
         .on("error", reject);
     });
-    console.log("Successfully downloaded file! " + fileName);
+    console.log(`Successfully downloaded file: ${fileName}`);
   } catch (err) {
     console.error(`Error downloading file: ${err.message}`);
     console.error(err.stack);
@@ -41,7 +41,7 @@ const downloadImage = async (fileUrl, downloadFolder) => {
 
 const pinImageToIPFS = async (baseFileName) => {
   const formData = new FormData();
-  const src = "/tmp/" + baseFileName;
+  const src = `/tmp/${baseFileName}`;
   let imageUrl = "";
 
   const file = fs.createReadStream(src);
@@ -109,7 +109,7 @@ const pinJsonToIPFS = async (hostProfile) => {
   try {
     const res = await axios(config);
     console.log(res.data);
-    cidJson = "ipfs://" + res.data.IpfsHash;
+    cidJson = `ipfs://${res.data.IpfsHash}`;
   } catch (error) {
     console.error(`Error pinning Json: ${data}: ${err.message}`);
     console.error(err.stack);
@@ -120,8 +120,7 @@ const pinJsonToIPFS = async (hostProfile) => {
 };
 exports.handler = async (event, context) => {
   let browser = null;
-  hostProfile.external_url =
-    "https://www.airbnb.com/users/show/" + event.queryStringParameters.hostid;
+  hostProfile.external_url = `https://www.airbnb.com/users/show/${event.queryStringParameters.hostid}`;
   let cidURL = "";
 
   try {
