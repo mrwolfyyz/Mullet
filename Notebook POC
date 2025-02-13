@@ -1,0 +1,162 @@
+import nest_asyncio
+nest_asyncio.apply()
+
+import os
+import logging
+import uuid
+from telegram import Update
+from telegram.ext import (
+    ApplicationBuilder,
+    ContextTypes,
+    CommandHandler,
+    MessageHandler,
+    filters
+)
+from langchain_groq import ChatGroq
+
+# Enable logging
+logging.basicConfig(
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    level=logging.INFO
+)
+
+# In-memory store for payments
+TRANSACTIONS = {}
+
+# ---- AI Response Function ----
+async def getAIresponse(user_input: str):
+    llm = ChatGroq(
+        model="llama-3.3-70b-versatile",
+        temperature=0,
+        max_tokens=None,
+        timeout=None,
+        max_retries=2,
+    )
+
+    messages = [
+        {
+            "role": "system",
+            "content": (
+                "👋 You are a helpful Telegram bot. Your tone is friendly, casual, and lightly irreverent, mixing playfulness with a clear, conversational style. It’s welcoming rather than formal, with a sense of humor "
+                "Your style is playful yet clear—think of it like talking to an old friend. "
+                "Always include well-placed emoji to match the tone, just like this:\n\n"
+                "🚀 Use 🚀 for excitement, 🤓 for nerdy info, 💡 for insights, 🔥 for hot tips, etc. "
+                "Keep responses natural—don’t overload with emoji, just enough to make things fun and engaging."
+            )
+        },
+        {"role": "user", "content": user_input},
+    ]
+
+    ai_msg = await llm.ainvoke(messages)  # ✅ Now async
+    return ai_msg.content if ai_msg else "🤖 Oops! Something went wrong. Try again."
+
+# ---- Command Handlers ----
+async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    welcome_text = (
+        "👋 Hey there, welcome to **Mullet**!\n\n"
+        "💬 Just talk to me like we're old friends. Want to send someone $100 USD? "
+        "Just say “Send 100 american dollars to alice@email.com for rent” and I'll handle the rest.\n\n"
+        "🤓 If you’re the type who spends their free time here on Telegram, "
+        "looking for alpha on memecoins, feel free to type /help for your fancy commands.\n\n"
+        "Otherwise, just say what you need in plain English—I’ve got you! 🚀"
+    )
+    await update.message.reply_text(welcome_text, parse_mode="Markdown")
+
+async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    help_text = (
+    "🤖 **Mullet Bot Commands**\n\n"
+    "🚀  /start — Say hi and get the basics.\n"
+    "ℹ️  /help — Show this help message (yep, this one).\n"
+    "💸  /mullet <amount> <token> <recipient> [reason] — Generate a payment link.\n"
+    "📜  /list — See all your past payments.\n\n"
+    "🔥 **Prefer plain English?** No problem—just type something like:\n"
+    "`Send 100 USDC to @bob for rent`\n"
+    "I'll handle the rest. No commands, no hassle. 💡\n\n"
+    "Now go forth and transact like a legend. 🚀"
+)
+    await update.message.reply_text(help_text, parse_mode="Markdown")
+
+async def mullet_payment_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    message_text = update.message.text  # e.g. "/mullet 100 USDC @bob Rent"
+    parts = message_text.split(None, 4)
+
+    if len(parts) < 4:
+        error_msg = (
+            "❌ *Invalid format.*\n\n"
+            "Usage: `/mullet <amount> <token> <recipient> [reason]`\n"
+            "Example: `/mullet 100 USDC @bob Rent`"
+        )
+        await update.message.reply_text(error_msg, parse_mode="Markdown")
+        return
+
+    amount_str = parts[1]
+    token = parts[2]
+    recipient = parts[3]
+    reason = parts[4] if len(parts) > 4 else "No reason provided"
+
+    try:
+        amount = float(amount_str)
+    except ValueError:
+        await update.message.reply_text("⚠️ Amount must be a number. Example: `/mullet 100 USDC @bob Rent`", parse_mode="Markdown")
+        return
+
+    txn_id = str(uuid.uuid4())
+    TRANSACTIONS[txn_id] = {
+        "amount": amount,
+        "token": token,
+        "recipient": recipient,
+        "reason": reason,
+        "sender_id": update.effective_user.id,
+    }
+
+    payment_link = f"https://mullet-demo.com/pay/{txn_id}"
+    reply_text = (
+        f"✅ **Payment Created!**\n\n"
+        f"💵 *Amount:* {amount} {token}\n"
+        f"🙋 *Recipient:* {recipient}\n"
+        f"📝 *Reason:* {reason}\n"
+        f"🆔 *Transaction ID:* `{txn_id}`\n\n"
+        f"💻 [Pay here]({payment_link})\n"
+        "🚀 Locked and loaded! Click to confirm and keep fees where they belong—out of your wallet. 💰"
+    )
+    await update.message.reply_text(reply_text, parse_mode="Markdown", disable_web_page_preview=True)
+
+async def list_payments_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not TRANSACTIONS:
+        await update.message.reply_text("🤷 *No payments found.*", parse_mode="Markdown")
+        return
+
+    lines = []
+    for txn_id, data in TRANSACTIONS.items():
+        line = (
+            f"🔹 **TXN:** `{txn_id}`\n"
+            f"   💵 *Amount:* {data['amount']} {data['token']}\n"
+            f"   🙋 *Recipient:* {data['recipient']}\n"
+            f"   📝 *Reason:* {data['reason']}\n"
+        )
+        lines.append(line)  # ✅ Fixed typo
+
+    reply_text = "📜 **Your Payments:**\n\n" + "\n".join(lines)
+    await update.message.reply_text(reply_text, parse_mode="Markdown")
+
+async def echo_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    user_text = update.message.text
+    ai_response = await getAIresponse(user_text)  # ✅ Now awaits AI response
+    await update.message.reply_text(ai_response)
+
+# ---- Setup the Bot ----
+BOT_TOKEN = os.getenv("MULLET_BOT_TOKEN", "YOUR_BOT_TOKEN_HERE")
+
+app = ApplicationBuilder().token(BOT_TOKEN).build()
+
+# Register command handlers
+app.add_handler(CommandHandler("start", start_command))
+app.add_handler(CommandHandler("help", help_command))
+app.add_handler(CommandHandler("mullet", mullet_payment_command))
+app.add_handler(CommandHandler("list", list_payments_command))
+
+# Fallback for all non-command text
+app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, echo_message))
+
+# ✅ Corrected async handling
+app.run_polling()
