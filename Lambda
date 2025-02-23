@@ -113,7 +113,8 @@ async def getAIresponse(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 " - 'canadian dollars' -> 'cad'\n"
                 " - 'usd', 'us dollars' -> 'usdc'\n"
                 "If the user is attempting to create a payment but has not provided recipient or amount, "
-                "prompt them for the missing details BEFORE calling mullet_payment_tool.\n"
+                "prompt them for the missing details BEFORE calling mullet_payment_tool."
+                 
             )
         },
         {"role": "user", "content": user_input},
