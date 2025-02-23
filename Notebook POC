@@ -4,6 +4,7 @@ nest_asyncio.apply()
 import os
 import logging
 import uuid
+import requests
 from telegram import Update
 from telegram.ext import (
     ApplicationBuilder,
@@ -25,30 +26,70 @@ logging.basicConfig(
 # In-memory store for payments
 TRANSACTIONS = {}
 
+# Currency conversion function
+def convert_to_usdc(amount: float, currency: str) -> float:
+    """Converts given currency amount to USDC using a live exchange rate API."""
+    try:
+        # IMPORTANT: strip + lowercase to avoid trailing spaces or punctuation
+        currency = currency.strip().lower()
+
+        response = requests.get("https://api.coingecko.com/api/v3/simple/price", params={
+            "ids": "usd-coin",
+            "vs_currencies": currency
+        })
+        response.raise_for_status()
+        data = response.json()
+        rate = data.get("usd-coin", {}).get(currency)
+        if rate:
+            return round(amount / rate, 2)
+
+        # If rate not found, log it for debugging
+        logging.error(f"Rate not found for currency '{currency}' in API response: {data}")
+
+    except Exception as e:
+        logging.error(f"Currency conversion error: {e}")
+
+    # Fallback if conversion fails or unknown currency
+    return amount
+
 # ---- Define Tools for AI to Call ----
 @tool
 def mullet_payment_tool(amount: float, token: str, recipient: str, reason: Optional[str] = "No reason provided") -> str:
     """Handles payment creation when AI detects a transaction request from user input."""
     txn_id = str(uuid.uuid4())
-
+    
+    original_amount = amount
+    original_currency = token.upper()
+    
+    # Default to USDC if no token is specified
+    if not token or original_currency == "USD":
+        token = "USDC"
+    
+    # Convert to USDC if necessary
+    if original_currency != "USDC":
+        converted_amount = convert_to_usdc(amount, original_currency)
+        conversion_text = f"(Converted: {original_amount} {original_currency} )"
+    else:
+        converted_amount = amount
+        conversion_text = ""
+    
     TRANSACTIONS[txn_id] = {
-        "amount": amount,
-        "token": token,
+        "amount": converted_amount,
+        "token": "USDC",
         "recipient": recipient,
         "reason": reason,
-        "sender_id": "AI_CALL",  # Placeholder since AI doesn't have a Telegram user ID
+        "sender_id": "AI_CALL",  # Placeholder for AI calls
     }
-
+    
     payment_link = f"https://mul.let/"
     return (
-        f"✅ Payment Link Created!\n\n"
-        f"💵 Amount: {amount} {token}\n"
+        f"✨ Smooth Move—Your Payment is Ready!\n\n"
+        f"✅ Amount: {converted_amount} USDC\n {conversion_text}\n"
         f"🙋 Recipient: {recipient}\n"
         f"📝 Reason: {reason}\n"
-        f"💻 Pay here: {payment_link}\n\n"
-        "🚀 Review, and then click to confirm and keep fees where they belong—out of your wallet! 💰"
+        f"👉 Review & Send: {payment_link}\n\n"
+        "🚀 Click to review, confirm, and send—keeping fees where they belong: out of your wallet! 💰"
     )
-
 
 @tool
 def list_payments_tool() -> str:
@@ -67,7 +108,6 @@ def list_payments_tool() -> str:
 
     return "📜 Your Payments:\n\n" + "\n".join(lines)
 
-
 # ---- AI Response Function with Tool Calling ----
 async def getAIresponse(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_input = update.message.text
@@ -83,13 +123,21 @@ async def getAIresponse(update: Update, context: ContextTypes.DEFAULT_TYPE):
     tools = [mullet_payment_tool, list_payments_tool]
     llm_with_tools = llm.bind_tools(tools)
 
+    # System instructions: we explicitly tell the LLM how to parse currency
     messages = [
         {
             "role": "system",
             "content": (
-                "👋 You are a helpful Telegram bot. Your tone is friendly, casual, and lightly irreverent, mixing playfulness with a clear, conversational style. "
-                "Use well-placed emoji: 🚀 for excitement, 🤓 for nerdy info, 💡 for insights, 🔥 for hot tips, etc."
-                "If the user is attempting to create a payment, but has not provided a recipient, amount, or currency/token (for exampple: canadian, us, usdc, dai),  prompt the user for the missing details before creating the payment"
+                "👋 You are a helpful Telegram bot. Your tone is friendly, casual, "
+                "and lightly irreverent. Use playful emoji like 🚀, 🤓, etc.\n\n"
+                "Your job: parse the user's natural-language requests to create payment instructions.\n\n"
+                "When the user says something like '10,000 Mexican pesos' or '500 Canadian dollars', "
+                "you MUST call mullet_payment_tool with a recognized 3-letter currency code. Examples:\n"
+                " - 'mexican pesos' -> 'mxn'\n"
+                " - 'canadian dollars' -> 'cad'\n"
+                " - 'usd', 'us dollars' -> 'usdc'\n"
+                "If the user is attempting to create a payment but has not provided recipient or amount, "
+                "prompt them for the missing details BEFORE calling mullet_payment_tool.\n"
             )
         },
         {"role": "user", "content": user_input},
@@ -104,81 +152,52 @@ async def getAIresponse(update: Update, context: ContextTypes.DEFAULT_TYPE):
             tool_args = call["args"]
 
             if tool_name == "mullet_payment_tool":
+                # Insert sender_id from Telegram user, if needed
                 tool_args["sender_id"] = update.effective_user.id
+                # Call the tool
                 response_text = mullet_payment_tool.invoke(tool_args)
+
             elif tool_name == "list_payments_tool":
                 response_text = list_payments_tool.invoke({})
+
             else:
                 response_text = "🤖 Oops! The AI tried to call an unknown function."
 
             await update.message.reply_text(response_text, parse_mode=None, disable_web_page_preview=True)
         return  
 
+    # If there's no tool call, it's just a text response
     response_text = response.content if response.content else "🤖 Oops! Something went wrong. Try again."
     await update.message.reply_text(response_text, parse_mode=None, disable_web_page_preview=True)
 
-
-# ---- Command Handlers (Unchanged) ----
+# ---- Command Handlers ----
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     welcome_text = (
         "👋 Hey there, welcome to Mullet!\n\n"
-        "💬 Just talk to me like we're old friends. Want to send someone $1000 USD?\n\n"
-        "Just type “Send 1000 USDC to alice@email.com” and I'll handle the rest.\n\n"
+        "💬 Just talk to me like we're old friends. Want to send someone $1000 USD?\n"
+        "Just type\n\n 'Send 1000 to alice@email.com' and I'll handle the rest.\n\n"
         "🚀 No commands needed, but if you like them, type /help."
     )
     await update.message.reply_text(welcome_text, parse_mode=None)
-
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     help_text = (
         "🤖 Mullet Bot Commands\n\n"
         "🚀  /start — Welcome message.\n"
         "ℹ️  /help — Show this help message.\n"
-        "💸  /mullet <amount> <currency> <recipient> <optional-reason>\n"
         "📜  /list — See all your past payments.\n\n"
         "🔥 Or just type:\n"
-        "`Send 100 USDC to @bob for rent`\n"
+        "Send 100 USDC to @bob for rent\n"
         "I'll handle the rest! 💡"
     )
     await update.message.reply_text(help_text, parse_mode=None)
-
-
-async def mullet_payment_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    message_text = update.message.text
-    parts = message_text.split(None, 4)
-
-    if len(parts) < 4:
-        error_msg = (
-            "❌ Invalid format.\n\n"
-            "Usage: `/mullet <amount> <token> <recipient> [reason]`\n"
-            "Example: `/mullet 100 USDC @bob Rent`"
-        )
-        await update.message.reply_text(error_msg, parse_mode=None)
-        return
-
-    amount_str = parts[1]
-    token = parts[2]
-    recipient = parts[3]
-    reason = parts[4] if len(parts) > 4 else "No reason provided"
-
-    response_text = mullet_payment_tool.invoke({
-        "amount": float(amount_str),
-        "token": token,
-        "recipient": recipient,
-        "reason": reason,
-        "sender_id": update.effective_user.id
-    })
-    await update.message.reply_text(response_text, parse_mode=None, disable_web_page_preview=True)
-
 
 async def list_payments_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     response_text = list_payments_tool.invoke({})
     await update.message.reply_text(response_text, parse_mode=None)
 
-
 async def echo_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await getAIresponse(update, context)
-
 
 # ---- Setup the Bot ----
 BOT_TOKEN = os.getenv("MULLET_BOT_TOKEN", "YOUR_BOT_TOKEN_HERE")
@@ -188,7 +207,6 @@ app = ApplicationBuilder().token(BOT_TOKEN).build()
 # Register command handlers
 app.add_handler(CommandHandler("start", start_command))
 app.add_handler(CommandHandler("help", help_command))
-app.add_handler(CommandHandler("mullet", mullet_payment_command))
 app.add_handler(CommandHandler("list", list_payments_command))
 
 # Fallback for all non-command text
@@ -196,4 +214,3 @@ app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, echo_message))
 
 # ✅ Run bot
 app.run_polling()
-
