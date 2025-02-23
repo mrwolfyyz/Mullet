@@ -1,0 +1,221 @@
+import json
+import os
+import logging
+import uuid
+import requests
+import nest_asyncio
+
+nest_asyncio.apply()
+
+from telegram import Update
+from telegram.ext import (
+    ApplicationBuilder,
+    CommandHandler,
+    MessageHandler,
+    ContextTypes,
+    filters,
+)
+
+from langchain_groq import ChatGroq
+from langchain_core.tools import tool
+from typing import Optional
+
+logging.basicConfig(level=logging.INFO)
+
+TRANSACTIONS = {}
+
+# Currency conversion function
+def convert_to_usdc(amount: float, currency: str) -> float:
+    """Converts given currency amount to USDC using a live exchange rate API."""
+    try:
+        currency = currency.strip().lower()
+        response = requests.get("https://api.coingecko.com/api/v3/simple/price", params={
+            "ids": "usd-coin",
+            "vs_currencies": currency
+        })
+        response.raise_for_status()
+        data = response.json()
+        rate = data.get("usd-coin", {}).get(currency)
+        if rate:
+            return round(amount / rate, 2)
+        logging.error(f"Rate not found for currency '{currency}' in API response: {data}")
+    except Exception as e:
+        logging.error(f"Currency conversion error: {e}")
+    return amount
+
+@tool
+def mullet_payment_tool(amount: float, token: str, recipient: str, reason: Optional[str] = "No reason provided") -> str:
+    """Processes a payment request by converting currency (if needed) and generating a payment link."""
+    txn_id = str(uuid.uuid4())
+    original_amount = amount
+    original_currency = token.upper()
+
+    if not token or original_currency == "USD":
+        token = "USDC"
+
+    if original_currency != "USDC":
+        converted_amount = convert_to_usdc(amount, original_currency)
+        conversion_text = f"(Converted: {original_amount} {original_currency})"
+    else:
+        converted_amount = amount
+        conversion_text = ""
+
+    TRANSACTIONS[txn_id] = {
+        "amount": converted_amount,
+        "token": "USDC",
+        "recipient": recipient,
+        "reason": reason,
+        "sender_id": "AI_CALL",
+    }
+
+    payment_link = f"https://mul.let/"
+    return (
+        f"✨ Smooth Move—Your Payment is Ready!\n\n"
+        f"✅ Amount: {converted_amount} USDC\n {conversion_text}\n"
+        f"🙋 Recipient: {recipient}\n"
+        f"📝 Reason: {reason}\n"
+        f"👉 Review & Send: {payment_link}\n\n"
+        "🚀 Click to review, confirm, and send—keeping fees where they belong: out of your wallet! 💰"
+    )
+@tool
+def list_payments_tool() -> str:
+    """Handles listing past transactions when AI detects a relevant query."""
+    if not TRANSACTIONS:
+        return "🤷 No payments found."
+
+    lines = []
+    for txn_id, data in TRANSACTIONS.items():
+        line = (
+            f"   🙋 Recipient: {data['recipient']}\n"
+            f"   💵 Amount: {data['amount']} {data['token']}\n"
+            f"   📝 Reason: {data['reason']}\n"
+        )
+        lines.append(line)
+
+    return "📜 Your Payments:\n\n" + "\n".join(lines)
+
+async def getAIresponse(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_input = update.message.text
+    llm = ChatGroq(model="llama-3.3-70b-versatile", temperature=0, max_tokens=None, timeout=None, max_retries=2)
+    tools = [mullet_payment_tool,list_payments_tool]
+    llm_with_tools = llm.bind_tools(tools)
+
+    messages = [
+        {
+            "role": "system",
+            "content": (
+                "👋 You are a helpful Telegram bot. Your tone is friendly, casual, "
+                "and lightly irreverent. Use playful emoji like 🚀, 🤓, etc.\n\n"
+                "Your job: parse the user's natural-language requests to create payment instructions.\n\n"
+                "When the user says something like '10,000 Mexican pesos' or '500 Canadian dollars', "
+                "you MUST call mullet_payment_tool with a recognized 3-letter currency code. Examples:\n"
+                " - 'mexican pesos' -> 'mxn'\n"
+                " - 'canadian dollars' -> 'cad'\n"
+                " - 'usd', 'us dollars' -> 'usdc'\n"
+                "If the user is attempting to create a payment but has not provided recipient or amount, "
+                "prompt them for the missing details BEFORE calling mullet_payment_tool.\n"
+            )
+        },
+        {"role": "user", "content": user_input},
+    ]
+
+    response = await llm_with_tools.ainvoke(messages)
+     # Check if AI wants to call a function
+    if response.tool_calls:
+        for call in response.tool_calls:
+            tool_name = call["name"]
+            tool_args = call["args"]
+
+            if tool_name == "mullet_payment_tool":
+                # Insert sender_id from Telegram user, if needed
+                tool_args["sender_id"] = update.effective_user.id
+                # Call the tool
+                response_text = mullet_payment_tool.invoke(tool_args)
+
+            elif tool_name == "list_payments_tool":
+                response_text = list_payments_tool.invoke({})
+
+            else:
+                response_text = "🤖 Oops! The AI tried to call an unknown function."
+
+            await update.message.reply_text(response_text, parse_mode=None, disable_web_page_preview=True)
+        return  
+
+    # If there's no tool call, it's just a text response
+    response_text = response.content if response.content else "🤖 Oops! Something went wrong. Try again."
+    await update.message.reply_text(response_text, disable_web_page_preview=True)
+
+async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    welcome_text = (
+        "👋 Hey there, welcome to Mullet!\n\n"
+        "💬 Just talk to me like we're old friends. Want to send someone $1000 USD?\n"
+        "Just type\n\n 'Send 1000 to alice@email.com' and I'll handle the rest.\n\n"
+        "🚀 No commands needed, but if you like them, type /help."
+    )
+    await update.message.reply_text(welcome_text, parse_mode=None)
+
+async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    help_text = (
+        "🤖 Mullet Bot Commands\n\n"
+        "🚀  /start — Welcome message.\n"
+        "ℹ️  /help — Show this help message.\n"
+        "📜  /list — See all your past payments.\n\n"
+        "🔥 Or just type:\n"
+        "Send 100 USDC to @bob for rent\n"
+        "I'll handle the rest! 💡"
+    )
+    await update.message.reply_text(help_text, parse_mode=None)
+
+async def list_payments_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    response_text = list_payments_tool.invoke({})
+    await update.message.reply_text(response_text, parse_mode=None)
+
+async def echo_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    await getAIresponse(update, context)
+
+BOT_TOKEN = os.getenv("MULLET_BOT_TOKEN", "YOUR_BOT_TOKEN_HERE")
+WEBHOOK_URL = os.getenv("WEBHOOK_URL", "YOUR_WEBHOOK_URL_HERE")
+
+application = ApplicationBuilder().token(BOT_TOKEN).updater(None).build()
+application.add_handler(CommandHandler("start", start_command))
+application.add_handler(CommandHandler("help", help_command))
+application.add_handler(CommandHandler("list", list_payments_command))
+application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, echo_message))
+
+import json
+import logging
+import asyncio
+
+logging.basicConfig(level=logging.INFO)
+
+
+def lambda_handler(event, context):
+    """
+    AWS Lambda entry point. Parses incoming Telegram webhook JSON,
+    constructs an Update object, and hands it to our PTB application.
+    """
+    try:
+        if "body" not in event:
+            logging.error("Missing 'body' key in event.")
+            return {"statusCode": 400, "body": "Bad Request: Missing 'body' key"}
+
+        body = json.loads(event["body"])  # Parse API Gateway JSON
+
+        if not isinstance(body, dict):
+            logging.error(f"Unexpected body format: {body}")
+            return {"statusCode": 400, "body": "Bad Request: Body is not a valid JSON object"}
+
+        update = Update.de_json(body, application.bot)
+
+        # ✅ Explicitly initialize application before processing update
+        if not application.running:
+            asyncio.run(application.initialize())  # Ensures proper initialization
+
+        # ✅ Ensure update is properly processed
+        asyncio.run(application.process_update(update))
+
+        return {"statusCode": 200, "body": "OK"}
+
+    except Exception as e:
+        logging.error(f"Error in lambda_handler: {e}")
+        return {"statusCode": 500, "body": "Internal Server Error"}
