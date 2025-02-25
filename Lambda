@@ -7,6 +7,7 @@ import nest_asyncio
 
 nest_asyncio.apply()
 
+
 from telegram import Update
 from telegram.ext import (
     ApplicationBuilder,
@@ -71,11 +72,11 @@ def mullet_payment_tool(amount: float, token: str, recipient: str, reason: Optio
     payment_link = f"https://mul.let/"
     return (
         f"✨ Smooth Move—Your Payment is Ready!\n\n"
-        f"✅ Amount: {converted_amount} USDC\n {conversion_text}\n"
-        f"🙋 Recipient: {recipient}\n"
+        f"💵 Amount: {converted_amount} USDC\n {conversion_text}\n"
+        f"🙋 Sending to: {recipient}\n"
         f"📝 Reason: {reason}\n"
         f"👉 Review & Send: {payment_link}\n\n"
-        "🚀 Click to review, confirm, and send—keeping fees where they belong: out of your wallet! 💰"
+        "🚀 Click to review, confirm, and send—Less fees, more good vibes. That’s the Mullet way. 💰"
     )
 @tool
 def list_payments_tool() -> str:
@@ -86,7 +87,7 @@ def list_payments_tool() -> str:
     lines = []
     for txn_id, data in TRANSACTIONS.items():
         line = (
-            f"   🙋 Recipient: {data['recipient']}\n"
+            f"   🙋 Sending to: {data['recipient']}\n"
             f"   💵 Amount: {data['amount']} {data['token']}\n"
             f"   📝 Reason: {data['reason']}\n"
         )
@@ -112,7 +113,7 @@ async def getAIresponse(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 " - 'mexican pesos' -> 'mxn'\n"
                 " - 'canadian dollars' -> 'cad'\n"
                 " - 'usd', 'us dollars' -> 'usdc'\n"
-                "If the user is attempting to create a payment but has not provided recipient or amount, "
+                "If the user is attempting to create a payment but has not provided a buddy to send it to or amount, "
                 "prompt them for the missing details BEFORE calling mullet_payment_tool."
                  
             )
@@ -148,9 +149,10 @@ async def getAIresponse(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     welcome_text = (
-        "👋 Hey there, welcome to Mullet!\n\n"
-        "💬 Just talk to me like we're old friends. Want to send someone $1000 USD?\n"
+        "👋 G'day, welcome to Mullet!\n\n"
+        "💬 Just talk to me like we're old friends. Want to send someone $1000?\n"
         "Just type\n\n 'Send 1000 to alice@email.com' and I'll handle the rest.\n\n"
+        "(10000 mexican pesos or $500 Canadian work too)\n\n"
         "🚀 No commands needed, but if you like them, type /help."
     )
     await update.message.reply_text(welcome_text, parse_mode=None)
