@@ -76,7 +76,7 @@ def mullet_payment_tool(amount: float, token: str, recipient: str, reason: Optio
         f"🙋 Sending to: {recipient}\n"
         f"📝 Reason: {reason}\n"
         f"👉 Review & Send: {payment_link}\n\n"
-        "🚀 Click to review, confirm, and send—Less fees, more good vibes. That’s the Mullet way. 💰"
+        "🚀 Click to review, confirm, and send—Less fees, more good vibes. That’s how we roll at Mullet. 💰"
     )
 @tool
 def list_payments_tool() -> str:
@@ -149,12 +149,16 @@ async def getAIresponse(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     welcome_text = (
-        "👋 G'day, welcome to Mullet!\n\n"
-        "💬 Just talk to me like we're old friends. Want to send someone $1000?\n"
-        "Just type\n\n 'Send 1000 to alice@email.com' and I'll handle the rest.\n\n"
-        "(10000 mexican pesos or $500 Canadian work too)\n\n"
-        "🚀 No commands needed, but if you like them, type /help."
-    )
+    "👋 **G'day, welcome to Mullet!** 🚀\n\n"
+    "💬 **No clunky forms, no fuss**—just tell me what you need, and I’ll make it happen.\n\n"
+    "💰 **Wanna send someone $1000? Easy.**\n"
+    "Just type:\n\n"
+    "   ✨ **Send 1000 to alice@email.com** ✨\n\n"
+    "💥 Boom. Done. Need pesos or CAD? No worries:\n"
+    "   💵 **Send 10,000 MXN to jose@email.mx or 500 CAD to dougie@email.ca** works too.\n\n"
+    "🔍 **Curious?** Type **/help**, but let’s be real—you won’t need it. 😉"
+)
+
     await update.message.reply_text(welcome_text, parse_mode=None)
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
