@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Mullet Payment 🚀</title>
+  <style>
+    body {
+      font-family: 'Helvetica Neue', Arial, sans-serif;
+      background: #f5f5f5;
+      color: #333;
+      text-align: center;
+      padding: 50px;
+      margin: 0;
+    }
+    .container {
+      background: #fff;
+      border-radius: 8px;
+      padding: 30px;
+      max-width: 400px;
+      margin: 0 auto;
+      box-shadow: 0 0 20px rgba(0, 0, 0, 0.1);
+      text-align: left;
+    }
+    h1 {
+      font-size: 2.5em;
+      margin-bottom: 20px;
+      color: #f39c12;
+      text-align: center;
+    }
+    .field {
+      margin: 25px 0;
+    }
+    .label {
+      font-size: 1.2em;
+      margin-bottom: 10px;
+      font-weight: bold;
+    }
+    .value {
+      font-size: 1em;
+      color: inherit;
+    }
+    button {
+      background-color: #f39c12;
+      border: none;
+      color: #fff;
+      padding: 15px 30px;
+      font-size: 1.2em;
+      cursor: pointer;
+      border-radius: 5px;
+      transition: background 0.3s;
+      margin: 30px auto;
+      display: block;
+    }
+    button:hover {
+      background-color: #e67e22;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Mullet Payment 🚀</h1>
+    <div class="field">
+      <div class="label">💵 Payment Amount</div>
+      <div class="value">1 USDC</div>
+    </div>
+    <div class="field">
+      <div class="label">🙋 Recipient</div>
+      <div class="value">0xD3Ce938382158b58ae6862FDDE26b6f3E5d73ea1</div>
+    </div>
+    <div class="field">
+      <div class="label">📝 Reason</div>
+      <div class="value">For the epic voyage!</div>
+    </div>
+    <!-- CTA Button -->
+    <button id="payButton">Send It and Let’s Roll! 💰</button>
+  </div>
+          
+ <!-- Load Ethers v5 from a CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/ethers@5.7.2/dist/ethers.umd.min.js"></script>
+  <script>
+    const payButton = document.getElementById('payButton');
+    const recipientAddress = "0xD3Ce938382158b58ae6862FDDE26b6f3E5d73ea1";
+      
+    // Corrected USDC token address with proper checksum on Base Sepolia:
+    const usdcAddress = "0x73077B1D135E2F5943F516939C7685BB78A1BF12";
+      
+    // Minimal ERC-20 ABI for the transfer function
+    const usdcAbi = [
+      "function transfer(address to, uint256 amount) returns (bool)"
+    ];
+     
+    async function initiatePayment() {
+      if (typeof window.ethereum !== 'undefined') {
+        try {
+          // Request wallet connection
+          await window.ethereum.request({ method: 'eth_requestAccounts' });
+          const provider = new ethers.providers.Web3Provider(window.ethereum);
+          const signer = provider.getSigner();
+      
+          // (Optional) Log the connected network to verify you're on Base Sepolia
+          const network = await provider.getNetwork();
+          console.log("Connected network:", network);
+      
+          // Create a contract instance for the USDC token
+          const usdcContract = new ethers.Contract(usdcAddress, usdcAbi, signer);
+      
+          // For an 18-decimal token, $1 USDC = 1 * 10^18 units
+          const amount = ethers.BigNumber.from("1000000000000000000");
+    
+          // Initiate the token transfer
+          const tx = await usdcContract.transfer(recipientAddress, amount);
+          console.log("Transaction submitted:", tx.hash);
+          alert("Payment initiated! Transaction hash: " + tx.hash);
+        } catch (error) {
+          console.error("Payment error:", error);
+          alert("Payment failed: " + error.message);
+        }
+      } else {
+        alert("Wallet not detected. Please install MetaMask or another compatible wallet.");
+      }
+    } 
+    
+    payButton.addEventListener('click', initiatePayment);
+  </script>
+</body>
+</html>
